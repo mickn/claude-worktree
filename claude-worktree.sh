@@ -195,45 +195,80 @@ main() {
 
     # Check if worktree already exists
     if [ -d "$WORKTREE_PATH" ]; then
-        echo -e "${RED}Error: Worktree '$WORKTREE_NAME' already exists at $WORKTREE_PATH${NC}"
-        exit 1
-    fi
-
-    # Handle branch checkout issues - automatically create a new branch with worktree name
-    echo -e "${YELLOW}Checking branch availability...${NC}"
-    
-    # Check if the current branch is already checked out elsewhere
-    if git worktree list --porcelain | grep -q "branch refs/heads/$BRANCH_NAME"; then
-        # Create a new branch with the worktree name
-        echo -e "${GREEN}Branch '$BRANCH_NAME' is already checked out. Creating new branch '$WORKTREE_NAME'...${NC}"
-        git branch "$WORKTREE_NAME" "$BRANCH_NAME" 2>/dev/null || {
-            # If branch already exists, create with timestamp
-            WORKTREE_BRANCH="$WORKTREE_NAME-$(date +%s)"
-            echo -e "${YELLOW}Branch '$WORKTREE_NAME' already exists. Creating '$WORKTREE_BRANCH' instead...${NC}"
-            git branch "$WORKTREE_BRANCH" "$BRANCH_NAME"
-            WORKTREE_NAME="$WORKTREE_BRANCH"
-        }
-        BRANCH_TO_USE="$WORKTREE_NAME"
-    else
-        # Use the current branch as-is
-        BRANCH_TO_USE="$BRANCH_NAME"
-    fi
-
-    # NOW create the worktree with the correct branch
-    echo -e "${GREEN}Creating worktree '$WORKTREE_NAME' with branch '$BRANCH_TO_USE'...${NC}"
-    git worktree add "$WORKTREE_PATH" "$BRANCH_TO_USE"
-
-    # Change to the new worktree
-    cd "$WORKTREE_PATH"
-
-    # Copy dotfiles
-    echo -e "${GREEN}Copying dotfiles...${NC}"
-    find "$REPO_ROOT" -maxdepth 1 -name ".*" -not -name ".git" -not -name "." -not -name ".." | while read -r dotfile; do
-        if [ -e "$dotfile" ]; then
-            cp -r "$dotfile" "$WORKTREE_PATH/" 2>/dev/null || true
+        echo -e "${YELLOW}Worktree '$WORKTREE_NAME' already exists at $WORKTREE_PATH${NC}"
+        
+        # Check if it's a valid git worktree
+        if git worktree list | grep -q "$WORKTREE_PATH"; then
+            echo -e "${BLUE}Would you like to reuse this existing worktree? (y/n)${NC}"
+            read -r response
+            
+            if [[ "$response" =~ ^[Yy]$ ]]; then
+                echo -e "${GREEN}Reusing existing worktree...${NC}"
+                cd "$WORKTREE_PATH"
+                
+                # Get the branch name from the worktree
+                BRANCH_TO_USE=$(git branch --show-current || echo "HEAD")
+                
+                # Skip worktree creation, jump to setup
+                REUSE_WORKTREE=true
+            else
+                echo -e "${RED}Cancelled${NC}"
+                exit 1
+            fi
+        else
+            echo -e "${RED}Error: Directory exists but is not a valid git worktree${NC}"
+            echo -e "${YELLOW}Please remove or rename it and try again${NC}"
+            exit 1
         fi
-    done
+    else
+        REUSE_WORKTREE=false
+    fi
 
+    # Only handle branch and create worktree if not reusing
+    if [ "$REUSE_WORKTREE" = false ]; then
+        # Handle branch checkout issues - automatically create a new branch with worktree name
+        echo -e "${YELLOW}Checking branch availability...${NC}"
+        
+        # Check if the current branch is already checked out elsewhere
+        if git worktree list --porcelain | grep -q "branch refs/heads/$BRANCH_NAME"; then
+            # Create a new branch with the worktree name
+            echo -e "${GREEN}Branch '$BRANCH_NAME' is already checked out. Creating new branch '$WORKTREE_NAME'...${NC}"
+            git branch "$WORKTREE_NAME" "$BRANCH_NAME" 2>/dev/null || {
+                # If branch already exists, create with timestamp
+                WORKTREE_BRANCH="$WORKTREE_NAME-$(date +%s)"
+                echo -e "${YELLOW}Branch '$WORKTREE_NAME' already exists. Creating '$WORKTREE_BRANCH' instead...${NC}"
+                git branch "$WORKTREE_BRANCH" "$BRANCH_NAME"
+                WORKTREE_NAME="$WORKTREE_BRANCH"
+            }
+            BRANCH_TO_USE="$WORKTREE_NAME"
+        else
+            # Use the current branch as-is
+            BRANCH_TO_USE="$BRANCH_NAME"
+        fi
+
+        # NOW create the worktree with the correct branch
+        echo -e "${GREEN}Creating worktree '$WORKTREE_NAME' with branch '$BRANCH_TO_USE'...${NC}"
+        git worktree add "$WORKTREE_PATH" "$BRANCH_TO_USE"
+
+        # Change to the new worktree
+        cd "$WORKTREE_PATH"
+    fi
+
+    # Only copy dotfiles for new worktrees
+    if [ "$REUSE_WORKTREE" = false ]; then
+        echo -e "${GREEN}Copying dotfiles...${NC}"
+        find "$REPO_ROOT" -maxdepth 1 -name ".*" -not -name ".git" -not -name "." -not -name ".." | while read -r dotfile; do
+            if [ -e "$dotfile" ]; then
+                cp -r "$dotfile" "$WORKTREE_PATH/" 2>/dev/null || true
+            fi
+        done
+    fi
+
+    # Run setup commands - always for reused worktrees, optionally for new ones
+    if [ "$REUSE_WORKTREE" = true ]; then
+        echo -e "${BLUE}Re-running setup commands for existing worktree...${NC}"
+    fi
+    
     # Check for configuration
     if [ -f ".claude-worktree.yml" ]; then
         echo -e "${GREEN}Found configuration file${NC}"
@@ -282,10 +317,25 @@ main() {
         fi
     fi
 
-    # Find available port
-    echo -e "${GREEN}Finding available port...${NC}"
-    PORT=$(find_available_port)
-    echo -e "${GREEN}Using port: $PORT${NC}"
+    # Check for existing session info to reuse port
+    SESSION_INFO="$WORKTREE_PATH/.claude-session"
+    if [ "$REUSE_WORKTREE" = true ] && [ -f "$SESSION_INFO" ]; then
+        # Try to use existing port
+        EXISTING_PORT=$(grep "^PORT=" "$SESSION_INFO" 2>/dev/null | cut -d'=' -f2)
+        if [ -n "$EXISTING_PORT" ] && ! lsof -i:$EXISTING_PORT >/dev/null 2>&1; then
+            echo -e "${GREEN}Reusing existing port: $EXISTING_PORT${NC}"
+            PORT=$EXISTING_PORT
+        else
+            echo -e "${YELLOW}Previous port $EXISTING_PORT is in use or invalid, finding new port...${NC}"
+            PORT=$(find_available_port)
+            echo -e "${GREEN}Using new port: $PORT${NC}"
+        fi
+    else
+        # Find available port for new worktree
+        echo -e "${GREEN}Finding available port...${NC}"
+        PORT=$(find_available_port)
+        echo -e "${GREEN}Using port: $PORT${NC}"
+    fi
 
     # Register the port
     register_port "$PORT" "$WORKTREE_NAME" "$WORKTREE_PATH"
