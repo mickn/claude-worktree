@@ -23,3 +23,7 @@ worktree-*
 
 # Local configuration
 .claude-worktree.yml.local
+
+# Claude worktree session files
+.claude-session
+.claude-server.log
