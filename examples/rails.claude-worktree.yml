@@ -1,0 +1,10 @@
+# Configuration for Ruby on Rails projects
+setup_commands: |
+  bundle install
+  yarn install
+  bundle exec rails db:create db:migrate db:seed
+  bundle exec rails assets:precompile
+  bundle exec rails tmp:clear
+
+server_command: foreman start -f Procfile.dev
+claude_command: claude

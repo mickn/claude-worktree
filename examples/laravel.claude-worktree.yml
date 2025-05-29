@@ -1,0 +1,11 @@
+# Configuration for Laravel projects
+setup_commands: |
+  composer install
+  npm install
+  cp .env.example .env
+  php artisan key:generate
+  php artisan migrate --seed
+  npm run build
+
+server_command: php artisan serve
+claude_command: claude

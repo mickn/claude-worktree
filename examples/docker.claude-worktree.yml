@@ -1,0 +1,9 @@
+# Configuration for Docker-based projects
+setup_commands: |
+  docker-compose build
+  docker-compose run --rm web bundle install
+  docker-compose run --rm web yarn install
+  docker-compose run --rm web rails db:create db:migrate db:seed
+
+server_command: docker-compose up
+claude_command: docker-compose exec web claude

@@ -1,0 +1,8 @@
+# Configuration for Go projects
+setup_commands: |
+  go mod download
+  go build -o app .
+  cp .env.example .env || true
+
+server_command: go run .
+claude_command: claude

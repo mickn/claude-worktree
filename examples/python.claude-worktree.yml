@@ -1,0 +1,10 @@
+# Configuration for Python/Django projects
+setup_commands: |
+  python -m venv venv
+  source venv/bin/activate
+  pip install -r requirements.txt
+  python manage.py migrate
+  python manage.py collectstatic --noinput
+
+server_command: source venv/bin/activate && python manage.py runserver
+claude_command: source venv/bin/activate && claude

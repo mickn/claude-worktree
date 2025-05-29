@@ -1,0 +1,6 @@
+# Minimal configuration
+setup_commands: |
+  echo "Setting up worktree..."
+
+server_command: echo "No server needed"
+claude_command: claude

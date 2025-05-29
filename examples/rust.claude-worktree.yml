@@ -1,0 +1,8 @@
+# Configuration for Rust projects
+setup_commands: |
+  cargo build
+  cargo test
+  cp .env.example .env || true
+
+server_command: cargo run
+claude_command: claude

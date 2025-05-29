@@ -1,0 +1,7 @@
+# Configuration for Java Spring Boot projects
+setup_commands: |
+  ./mvnw clean install
+  cp src/main/resources/application.yml.example src/main/resources/application.yml || true
+
+server_command: ./mvnw spring-boot:run
+claude_command: claude

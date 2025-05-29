@@ -1,0 +1,25 @@
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Temporary files
+*.tmp
+*.bak
+*.log
+
+# Installation artifacts
+ports.json
+
+# Test worktrees
+test-*
+worktree-*
+
+# Local configuration
+.claude-worktree.yml.local

@@ -1,0 +1,10 @@
+# Configuration for Next.js projects
+setup_commands: |
+  npm install
+  npm run build
+  cp .env.local.example .env.local || true
+  npx prisma generate || true
+  npx prisma migrate deploy || true
+
+server_command: npm run dev
+claude_command: claude

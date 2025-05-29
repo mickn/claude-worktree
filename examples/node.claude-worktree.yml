@@ -1,0 +1,8 @@
+# Configuration for Node.js projects
+setup_commands: |
+  npm install
+  npm run build
+  cp .env.example .env || true
+
+server_command: npm run dev
+claude_command: claude
