@@ -406,7 +406,54 @@ EOF
         unregister_port "$PORT"
         rm -f "$SESSION_INFO"
 
-        echo -e "${GREEN}Cleanup complete${NC}"
+        # Offer post-session options
+        echo -e "\n${CYAN}═══════════════════════════════════════════${NC}"
+        echo -e "${CYAN}    Session Complete - What Next?${NC}"
+        echo -e "${CYAN}═══════════════════════════════════════════${NC}"
+        
+        # Check if there are any changes
+        if [ -n "$(git status --porcelain)" ] || [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/$BRANCH_TO_USE 2>/dev/null || echo 'none')" ]; then
+            echo -e "${BLUE}You have uncommitted changes or unpushed commits.${NC}"
+            echo -e "\n${BLUE}Choose an option:${NC}"
+            echo "1) Create a PR using Claude (recommended)"
+            echo "2) Push changes to branch '$BRANCH_TO_USE'"
+            echo "3) Leave everything as-is (come back later)"
+            echo "4) Skip"
+            
+            read -r -p "Enter choice (1-4): " exit_choice
+            
+            case $exit_choice in
+                1)
+                    echo -e "\n${GREEN}Creating PR with Claude...${NC}"
+                    cd "$WORKTREE_PATH"
+                    $CLAUDE_CMD -c -p "create a PR" || {
+                        echo -e "${YELLOW}Claude PR creation ended${NC}"
+                    }
+                    ;;
+                2)
+                    echo -e "\n${GREEN}Pushing changes to branch '$BRANCH_TO_USE'...${NC}"
+                    cd "$WORKTREE_PATH"
+                    git push -u origin "$BRANCH_TO_USE" || {
+                        echo -e "${YELLOW}Push failed. You can push manually later.${NC}"
+                    }
+                    ;;
+                3)
+                    echo -e "\n${GREEN}Worktree preserved at: $WORKTREE_PATH${NC}"
+                    echo -e "${BLUE}To resume later, run:${NC}"
+                    echo -e "  cd $WORKTREE_PATH"
+                    echo -e "  claude-worktree"
+                    ;;
+                *)
+                    ;;
+            esac
+        else
+            echo -e "${GREEN}No changes detected. Worktree clean.${NC}"
+        fi
+        
+        echo -e "\n${CYAN}───────────────────────────────────────────${NC}"
+        echo -e "${GREEN}✓ Cleanup complete${NC}"
+        echo -e "${BLUE}Worktree location:${NC} $WORKTREE_PATH"
+        echo -e "${CYAN}───────────────────────────────────────────${NC}"
     }
 
     trap cleanup EXIT INT TERM

@@ -110,6 +110,21 @@ claude-worktree-info
    - Start your server
    - Launch Claude
 
+### Session Completion
+
+When you exit Claude, the tool offers several options for your work:
+
+1. **Create a PR using Claude** (recommended) - Automatically creates a pull request using Claude's PR creation feature
+2. **Push changes to branch** - Pushes your branch to the remote repository
+3. **Leave everything as-is** - Preserves the worktree so you can return later
+4. **Skip** - Just clean up the server without any git operations
+
+The worktree remains intact after the session, allowing you to:
+- Resume work later by running `cw` from the worktree directory  
+- Review changes before creating a PR
+- Run additional tests or make final adjustments
+- Reuse the same worktree and port in future sessions
+
 ### Managing Multiple Sessions
 
 Each session runs on its own port. View all active sessions:
