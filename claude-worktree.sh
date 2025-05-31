@@ -190,15 +190,15 @@ main() {
     # Sanitize worktree name
     WORKTREE_NAME=$(echo "$WORKTREE_NAME" | tr ' ' '-' | tr -cd '[:alnum:]-_')
 
-    # Create worktree path
-    WORKTREE_PATH="$REPO_ROOT/../$WORKTREE_NAME"
+    # Create worktree path (use absolute path)
+    WORKTREE_PATH=$(cd "$REPO_ROOT/.." && pwd)/"$WORKTREE_NAME"
 
     # Check if worktree already exists
     if [ -d "$WORKTREE_PATH" ]; then
         echo -e "${YELLOW}Worktree '$WORKTREE_NAME' already exists at $WORKTREE_PATH${NC}"
         
-        # Check if it's a valid git worktree
-        if git worktree list | grep -q "$WORKTREE_PATH"; then
+        # Check if it's a valid git worktree from the main repository
+        if (cd "$REPO_ROOT" && git worktree list | grep -q "$WORKTREE_PATH"); then
             echo -e "${BLUE}Would you like to reuse this existing worktree? (y/n)${NC}"
             read -r response
             
