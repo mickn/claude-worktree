@@ -2,6 +2,8 @@
 
 A powerful workflow tool that creates isolated Git worktrees for Claude Code sessions, with automatic server management, port allocation, and project-specific configurations.
 
+![claude-workspace](claude-workspace.jpg)
+
 ## Features
 
 - 🌳 **Git Worktree Integration**: Creates isolated development environments without switching branches
