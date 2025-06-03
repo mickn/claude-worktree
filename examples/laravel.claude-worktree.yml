@@ -1,4 +1,8 @@
 # Configuration for Laravel projects
+# Database isolation is automatic for Laravel projects
+# The script will detect your database settings from .env
+# and create an isolated database for each worktree
+
 setup_commands: |
   composer install
   npm install
@@ -9,3 +13,8 @@ setup_commands: |
 
 server_command: php artisan serve
 claude_command: claude
+
+# Optional: Explicitly configure database settings
+# database:
+#   type: mysql  # or postgresql
+#   name: laravel_db  # base database name to clone from

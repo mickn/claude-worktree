@@ -8,6 +8,7 @@ set -e
 # Configuration
 CLAUDE_WORKTREE_DIR="$HOME/.claude-worktree"
 PORTS_FILE="$CLAUDE_WORKTREE_DIR/ports.json"
+SESSIONS_FILE="$CLAUDE_WORKTREE_DIR/sessions.json"
 MIN_PORT=3000
 MAX_PORT=9999
 
@@ -25,6 +26,11 @@ mkdir -p "$CLAUDE_WORKTREE_DIR"
 # Initialize ports file if it doesn't exist
 if [ ! -f "$PORTS_FILE" ]; then
     echo "{}" > "$PORTS_FILE"
+fi
+
+# Initialize sessions file if it doesn't exist
+if [ ! -f "$SESSIONS_FILE" ]; then
+    echo "{}" > "$SESSIONS_FILE"
 fi
 
 # Function to find next available port
@@ -90,6 +96,175 @@ get_multiline_config() {
             awk "/^$key:/ {flag=1; next} /^[^ ]/ {flag=0} flag" "$config_file" 2>/dev/null
         fi
     fi
+}
+
+# Function to create isolated database
+create_database() {
+    local db_type=$1
+    local original_db=$2
+    local worktree_name=$3
+    local db_name="${original_db}_${worktree_name//-/_}"
+    
+    echo -e "${BLUE}Creating isolated database: $db_name${NC}"
+    
+    case $db_type in
+        "postgresql"|"postgres")
+            # Check if database already exists
+            if psql -lqt | cut -d \| -f 1 | grep -qw "$db_name"; then
+                echo -e "${YELLOW}Database $db_name already exists${NC}"
+            else
+                # Create database
+                createdb "$db_name" 2>/dev/null || {
+                    echo -e "${YELLOW}Failed to create database. Trying with psql...${NC}"
+                    psql -c "CREATE DATABASE \"$db_name\";" 2>/dev/null || {
+                        echo -e "${RED}Error: Failed to create PostgreSQL database${NC}"
+                        return 1
+                    }
+                }
+                
+                # Clone data if original database exists
+                if psql -lqt | cut -d \| -f 1 | grep -qw "$original_db"; then
+                    echo -e "${BLUE}Cloning data from $original_db...${NC}"
+                    pg_dump "$original_db" | psql "$db_name" 2>/dev/null || {
+                        echo -e "${YELLOW}Warning: Failed to clone data, starting with empty database${NC}"
+                    }
+                fi
+            fi
+            ;;
+        
+        "mysql")
+            # Check if database already exists
+            if mysql -e "SHOW DATABASES;" 2>/dev/null | grep -qw "$db_name"; then
+                echo -e "${YELLOW}Database $db_name already exists${NC}"
+            else
+                # Create database
+                mysql -e "CREATE DATABASE \`$db_name\`;" 2>/dev/null || {
+                    echo -e "${RED}Error: Failed to create MySQL database${NC}"
+                    return 1
+                }
+                
+                # Clone data if original database exists
+                if mysql -e "SHOW DATABASES;" 2>/dev/null | grep -qw "$original_db"; then
+                    echo -e "${BLUE}Cloning data from $original_db...${NC}"
+                    mysqldump "$original_db" 2>/dev/null | mysql "$db_name" 2>/dev/null || {
+                        echo -e "${YELLOW}Warning: Failed to clone data, starting with empty database${NC}"
+                    }
+                fi
+            fi
+            ;;
+        
+        *)
+            echo -e "${YELLOW}Unknown database type: $db_type${NC}"
+            return 1
+            ;;
+    esac
+    
+    echo "$db_name"
+}
+
+# Function to update database configuration
+update_database_config() {
+    local framework=$1
+    local db_name=$2
+    local worktree_path=$3
+    
+    case $framework in
+        "rails")
+            # Update Rails database.yml
+            if [ -f "$worktree_path/config/database.yml" ]; then
+                echo -e "${BLUE}Updating Rails database configuration...${NC}"
+                # Create a backup
+                cp "$worktree_path/config/database.yml" "$worktree_path/config/database.yml.backup"
+                
+                # Update database name for development and test environments
+                if command -v yq &> /dev/null; then
+                    yq eval ".development.database = \"$db_name\"" -i "$worktree_path/config/database.yml"
+                    yq eval ".test.database = \"${db_name}_test\"" -i "$worktree_path/config/database.yml"
+                else
+                    # Fallback to sed
+                    sed -i.bak "s/database: .*_development/database: $db_name/" "$worktree_path/config/database.yml"
+                    sed -i.bak "s/database: .*_test/database: ${db_name}_test/" "$worktree_path/config/database.yml"
+                fi
+            fi
+            ;;
+        
+        "django")
+            # Update Django settings
+            local settings_file="$worktree_path/settings.py"
+            [ -f "$worktree_path/config/settings.py" ] && settings_file="$worktree_path/config/settings.py"
+            [ -f "$worktree_path/project/settings.py" ] && settings_file="$worktree_path/project/settings.py"
+            
+            if [ -f "$settings_file" ]; then
+                echo -e "${BLUE}Updating Django database configuration...${NC}"
+                # This is a simplified approach - in practice, you might want to use environment variables
+                echo "# Claude Worktree Database Override" >> "$settings_file"
+                echo "import os" >> "$settings_file"
+                echo "if os.environ.get('CLAUDE_WORKTREE_DB'):" >> "$settings_file"
+                echo "    DATABASES['default']['NAME'] = os.environ['CLAUDE_WORKTREE_DB']" >> "$settings_file"
+            fi
+            ;;
+        
+        "laravel")
+            # Update Laravel .env file
+            if [ -f "$worktree_path/.env" ]; then
+                echo -e "${BLUE}Updating Laravel database configuration...${NC}"
+                sed -i.bak "s/^DB_DATABASE=.*/DB_DATABASE=$db_name/" "$worktree_path/.env"
+            fi
+            ;;
+    esac
+}
+
+# Function to drop database
+drop_database() {
+    local db_type=$1
+    local db_name=$2
+    
+    echo -e "${YELLOW}Dropping database: $db_name${NC}"
+    
+    case $db_type in
+        "postgresql"|"postgres")
+            dropdb "$db_name" 2>/dev/null || {
+                psql -c "DROP DATABASE IF EXISTS \"$db_name\";" 2>/dev/null || {
+                    echo -e "${YELLOW}Warning: Failed to drop PostgreSQL database${NC}"
+                }
+            }
+            ;;
+        
+        "mysql")
+            mysql -e "DROP DATABASE IF EXISTS \`$db_name\`;" 2>/dev/null || {
+                echo -e "${YELLOW}Warning: Failed to drop MySQL database${NC}"
+            }
+            ;;
+    esac
+}
+
+# Function to register session with database info
+register_session() {
+    local worktree_name=$1
+    local worktree_path=$2
+    local port=$3
+    local db_info=$4
+    
+    local temp_file=$(mktemp)
+    jq ". + {\"$worktree_name\": {
+        \"path\": \"$worktree_path\",
+        \"port\": $port,
+        \"database\": $db_info,
+        \"created\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"
+    }}" "$SESSIONS_FILE" > "$temp_file" && mv "$temp_file" "$SESSIONS_FILE"
+}
+
+# Function to get session info
+get_session_info() {
+    local worktree_name=$1
+    jq -r ".\"$worktree_name\"" "$SESSIONS_FILE" 2>/dev/null
+}
+
+# Function to unregister session
+unregister_session() {
+    local worktree_name=$1
+    local temp_file=$(mktemp)
+    jq "del(.\"$worktree_name\")" "$SESSIONS_FILE" > "$temp_file" && mv "$temp_file" "$SESSIONS_FILE"
 }
 
 # Function to handle branch checkout issues
@@ -263,6 +438,62 @@ main() {
             fi
         done
     fi
+    
+    # Set up isolated database if configured
+    DB_CONFIG=$(get_config_value "database" "")
+    DB_TYPE=""
+    DB_NAME=""
+    DB_CREATED=false
+    
+    if [ -n "$DB_CONFIG" ] || [ -f "config/database.yml" ] || [ -f ".env" ] || [ -f "settings.py" ]; then
+        # Detect database type and name
+        if [ -f ".claude-worktree.yml" ] && command -v yq &> /dev/null; then
+            DB_TYPE=$(yq eval ".database.type" ".claude-worktree.yml" 2>/dev/null | grep -v "^null$" || echo "")
+            DB_NAME=$(yq eval ".database.name" ".claude-worktree.yml" 2>/dev/null | grep -v "^null$" || echo "")
+        fi
+        
+        # Auto-detect if not specified
+        if [ -z "$DB_TYPE" ]; then
+            if [ -f "config/database.yml" ]; then
+                # Rails project
+                if grep -q "adapter:.*postgresql" "config/database.yml" 2>/dev/null; then
+                    DB_TYPE="postgresql"
+                elif grep -q "adapter:.*mysql" "config/database.yml" 2>/dev/null; then
+                    DB_TYPE="mysql"
+                fi
+                
+                # Get database name if not specified
+                if [ -z "$DB_NAME" ] && command -v yq &> /dev/null; then
+                    DB_NAME=$(yq eval ".development.database" "config/database.yml" 2>/dev/null | grep -v "^null$" || echo "")
+                fi
+            elif [ -f ".env" ] && grep -q "DB_CONNECTION" ".env"; then
+                # Laravel project
+                DB_TYPE=$(grep "^DB_CONNECTION=" ".env" | cut -d'=' -f2)
+                DB_NAME=$(grep "^DB_DATABASE=" ".env" | cut -d'=' -f2)
+            fi
+        fi
+        
+        # Create isolated database if we have the info
+        if [ -n "$DB_TYPE" ] && [ -n "$DB_NAME" ]; then
+            NEW_DB_NAME=$(create_database "$DB_TYPE" "$DB_NAME" "$WORKTREE_NAME") || {
+                echo -e "${YELLOW}Warning: Failed to create isolated database${NC}"
+                NEW_DB_NAME=""
+            }
+            
+            if [ -n "$NEW_DB_NAME" ]; then
+                DB_CREATED=true
+                # Detect framework and update config
+                if [ -f "config/database.yml" ] && [ -f "Gemfile" ]; then
+                    update_database_config "rails" "$NEW_DB_NAME" "$WORKTREE_PATH"
+                elif [ -f ".env" ] && [ -f "artisan" ]; then
+                    update_database_config "laravel" "$NEW_DB_NAME" "$WORKTREE_PATH"
+                elif [ -f "manage.py" ] || [ -f "settings.py" ]; then
+                    update_database_config "django" "$NEW_DB_NAME" "$WORKTREE_PATH"
+                    export CLAUDE_WORKTREE_DB="$NEW_DB_NAME"
+                fi
+            fi
+        fi
+    fi
 
     # Run setup commands - always for reused worktrees, optionally for new ones
     if [ "$REUSE_WORKTREE" = true ]; then
@@ -348,7 +579,17 @@ PORT=$PORT
 STARTED=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 BRANCH=$BRANCH_TO_USE
 REPO=$REPO_NAME
+DB_TYPE=$DB_TYPE
+DB_NAME=$NEW_DB_NAME
+DB_CREATED=$DB_CREATED
 EOF
+    
+    # Register session with database info
+    if [ "$DB_CREATED" = true ]; then
+        register_session "$WORKTREE_NAME" "$WORKTREE_PATH" "$PORT" "{\"type\": \"$DB_TYPE\", \"name\": \"$NEW_DB_NAME\"}"
+    else
+        register_session "$WORKTREE_NAME" "$WORKTREE_PATH" "$PORT" "null"
+    fi
 
     # Get server command from config
     SERVER_CMD=$(get_config_value "server_command" "")
@@ -382,7 +623,7 @@ EOF
     fi
 
     # Get Claude command from config
-    CLAUDE_CMD=$(get_config_value "claude_command" "claude")
+    CLAUDE_CMD="$(get_config_value "claude_command" "claude") --dangerously-skip-permissions"
 
     # Create a cleanup function
     cleanup() {
@@ -404,6 +645,39 @@ EOF
         lsof -ti:$PORT | xargs kill -9 2>/dev/null || true
 
         unregister_port "$PORT"
+        
+        # Clean up database if it was created for this session
+        if [ -f "$SESSION_INFO" ]; then
+            local db_created=$(grep "^DB_CREATED=" "$SESSION_INFO" 2>/dev/null | cut -d'=' -f2)
+            local db_type=$(grep "^DB_TYPE=" "$SESSION_INFO" 2>/dev/null | cut -d'=' -f2)
+            local db_name=$(grep "^DB_NAME=" "$SESSION_INFO" 2>/dev/null | cut -d'=' -f2)
+            
+            if [ "$db_created" = "true" ] && [ -n "$db_type" ] && [ -n "$db_name" ]; then
+                echo -e "${BLUE}Database cleanup options:${NC}"
+                echo "1) Keep database for later use"
+                echo "2) Drop database"
+                echo "3) Skip (decide later)"
+                
+                read -r -p "Enter choice (1-3): " db_choice
+                
+                case $db_choice in
+                    2)
+                        drop_database "$db_type" "$db_name"
+                        echo -e "${GREEN}Database dropped${NC}"
+                        ;;
+                    1)
+                        echo -e "${GREEN}Database '$db_name' preserved for later use${NC}"
+                        ;;
+                    *)
+                        echo -e "${YELLOW}Database '$db_name' left as-is${NC}"
+                        ;;
+                esac
+            fi
+        fi
+        
+        # Unregister session
+        unregister_session "$WORKTREE_NAME"
+        
         rm -f "$SESSION_INFO"
 
         # Offer post-session options

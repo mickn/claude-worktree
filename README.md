@@ -195,6 +195,47 @@ claude_command: docker-compose exec web claude
 
 ## Advanced Features
 
+### Database Isolation
+
+Claude Worktree Manager automatically creates isolated databases for each worktree to prevent data conflicts between different branches or features. This feature works with PostgreSQL and MySQL.
+
+#### Automatic Database Detection
+
+The tool automatically detects and isolates databases for:
+- **Rails**: Reads `config/database.yml` and creates isolated development/test databases
+- **Laravel**: Reads `.env` file and updates `DB_DATABASE`
+- **Django**: Sets `CLAUDE_WORKTREE_DB` environment variable
+
+#### Manual Database Configuration
+
+You can explicitly configure database settings in `.claude-worktree.yml`:
+
+```yaml
+database:
+  type: postgresql  # or mysql
+  name: myapp_development  # base database name to clone from
+
+setup_commands: |
+  # Your setup commands here
+```
+
+#### How It Works
+
+1. When creating a worktree, the tool:
+   - Creates a new database named `{original_db}_{worktree_name}`
+   - Clones data from the original database (if it exists)
+   - Updates your framework's configuration to use the new database
+
+2. When closing a session, you can choose to:
+   - Keep the database for later use
+   - Drop the database
+   - Skip and decide later
+
+#### Requirements
+
+- PostgreSQL: `psql`, `createdb`, `dropdb`, `pg_dump` commands
+- MySQL: `mysql`, `mysqldump` commands with appropriate permissions
+
 ### Database Cloning (Rails)
 
 For faster setup with large databases:

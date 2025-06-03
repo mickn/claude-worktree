@@ -1,0 +1,20 @@
+# Example configuration with explicit database settings
+# This shows how to manually configure database isolation
+
+# Explicitly configure database settings
+database:
+  type: postgresql  # Required: postgresql or mysql
+  name: myapp_development  # Required: base database name to clone from
+
+# Your setup commands
+setup_commands: |
+  echo "Setting up project..."
+  # Add your project-specific setup commands here
+  # The database will already be created and configured
+  # before these commands run
+
+# Your server command
+server_command: echo "Add your server command here"
+
+# Optional Claude command customization
+claude_command: claude

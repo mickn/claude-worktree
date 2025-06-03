@@ -1,4 +1,8 @@
 # Configuration for Ruby on Rails projects
+# Database isolation is automatic for Rails projects
+# The script will detect your database type from database.yml
+# and create an isolated database for each worktree
+
 setup_commands: |
   bundle install
   yarn install
@@ -8,3 +12,8 @@ setup_commands: |
 
 server_command: foreman start -f Procfile.dev
 claude_command: claude
+
+# Optional: Explicitly configure database settings
+# database:
+#   type: postgresql  # or mysql
+#   name: myapp_development  # base database name to clone from
