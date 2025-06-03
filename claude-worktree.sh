@@ -105,28 +105,28 @@ create_database() {
     local worktree_name=$3
     local db_name="${original_db}_${worktree_name//-/_}"
     
-    echo -e "${BLUE}Creating isolated database: $db_name${NC}"
+    echo -e "${BLUE}Creating isolated database: $db_name${NC}" >&2
     
     case $db_type in
         "postgresql"|"postgres")
             # Check if database already exists
             if psql -lqt | cut -d \| -f 1 | grep -qw "$db_name"; then
-                echo -e "${YELLOW}Database $db_name already exists${NC}"
+                echo -e "${YELLOW}Database $db_name already exists${NC}" >&2
             else
                 # Create database
                 createdb "$db_name" 2>/dev/null || {
-                    echo -e "${YELLOW}Failed to create database. Trying with psql...${NC}"
+                    echo -e "${YELLOW}Failed to create database. Trying with psql...${NC}" >&2
                     psql -c "CREATE DATABASE \"$db_name\";" 2>/dev/null || {
-                        echo -e "${RED}Error: Failed to create PostgreSQL database${NC}"
+                        echo -e "${RED}Error: Failed to create PostgreSQL database${NC}" >&2
                         return 1
                     }
                 }
                 
                 # Clone data if original database exists
                 if psql -lqt | cut -d \| -f 1 | grep -qw "$original_db"; then
-                    echo -e "${BLUE}Cloning data from $original_db...${NC}"
+                    echo -e "${BLUE}Cloning data from $original_db...${NC}" >&2
                     pg_dump "$original_db" | psql "$db_name" 2>/dev/null || {
-                        echo -e "${YELLOW}Warning: Failed to clone data, starting with empty database${NC}"
+                        echo -e "${YELLOW}Warning: Failed to clone data, starting with empty database${NC}" >&2
                     }
                 fi
             fi
@@ -135,26 +135,26 @@ create_database() {
         "mysql")
             # Check if database already exists
             if mysql -e "SHOW DATABASES;" 2>/dev/null | grep -qw "$db_name"; then
-                echo -e "${YELLOW}Database $db_name already exists${NC}"
+                echo -e "${YELLOW}Database $db_name already exists${NC}" >&2
             else
                 # Create database
                 mysql -e "CREATE DATABASE \`$db_name\`;" 2>/dev/null || {
-                    echo -e "${RED}Error: Failed to create MySQL database${NC}"
+                    echo -e "${RED}Error: Failed to create MySQL database${NC}" >&2
                     return 1
                 }
                 
                 # Clone data if original database exists
                 if mysql -e "SHOW DATABASES;" 2>/dev/null | grep -qw "$original_db"; then
-                    echo -e "${BLUE}Cloning data from $original_db...${NC}"
+                    echo -e "${BLUE}Cloning data from $original_db...${NC}" >&2
                     mysqldump "$original_db" 2>/dev/null | mysql "$db_name" 2>/dev/null || {
-                        echo -e "${YELLOW}Warning: Failed to clone data, starting with empty database${NC}"
+                        echo -e "${YELLOW}Warning: Failed to clone data, starting with empty database${NC}" >&2
                     }
                 fi
             fi
             ;;
         
         *)
-            echo -e "${YELLOW}Unknown database type: $db_type${NC}"
+            echo -e "${YELLOW}Unknown database type: $db_type${NC}" >&2
             return 1
             ;;
     esac
@@ -475,10 +475,35 @@ main() {
         
         # Create isolated database if we have the info
         if [ -n "$DB_TYPE" ] && [ -n "$DB_NAME" ]; then
-            NEW_DB_NAME=$(create_database "$DB_TYPE" "$DB_NAME" "$WORKTREE_NAME") || {
-                echo -e "${YELLOW}Warning: Failed to create isolated database${NC}"
-                NEW_DB_NAME=""
-            }
+            # Check if database server is running
+            if [ "$DB_TYPE" = "postgresql" ] || [ "$DB_TYPE" = "postgres" ]; then
+                if ! pg_isready >/dev/null 2>&1; then
+                    echo -e "${YELLOW}Warning: PostgreSQL server is not running. Skipping database isolation.${NC}"
+                    echo -e "${YELLOW}Start PostgreSQL and re-run to create isolated database.${NC}"
+                    NEW_DB_NAME=""
+                else
+                    NEW_DB_NAME=$(create_database "$DB_TYPE" "$DB_NAME" "$WORKTREE_NAME") || {
+                        echo -e "${YELLOW}Warning: Failed to create isolated database${NC}"
+                        NEW_DB_NAME=""
+                    }
+                fi
+            elif [ "$DB_TYPE" = "mysql" ]; then
+                if ! mysqladmin ping >/dev/null 2>&1; then
+                    echo -e "${YELLOW}Warning: MySQL server is not running. Skipping database isolation.${NC}"
+                    echo -e "${YELLOW}Start MySQL and re-run to create isolated database.${NC}"
+                    NEW_DB_NAME=""
+                else
+                    NEW_DB_NAME=$(create_database "$DB_TYPE" "$DB_NAME" "$WORKTREE_NAME") || {
+                        echo -e "${YELLOW}Warning: Failed to create isolated database${NC}"
+                        NEW_DB_NAME=""
+                    }
+                fi
+            else
+                NEW_DB_NAME=$(create_database "$DB_TYPE" "$DB_NAME" "$WORKTREE_NAME") || {
+                    echo -e "${YELLOW}Warning: Failed to create isolated database${NC}"
+                    NEW_DB_NAME=""
+                }
+            fi
             
             if [ -n "$NEW_DB_NAME" ]; then
                 DB_CREATED=true
