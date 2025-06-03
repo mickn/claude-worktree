@@ -477,9 +477,10 @@ main() {
         if [ -n "$DB_TYPE" ] && [ -n "$DB_NAME" ]; then
             # Check if database server is running
             if [ "$DB_TYPE" = "postgresql" ] || [ "$DB_TYPE" = "postgres" ]; then
-                if ! pg_isready >/dev/null 2>&1; then
-                    echo -e "${YELLOW}Warning: PostgreSQL server is not running. Skipping database isolation.${NC}"
-                    echo -e "${YELLOW}Start PostgreSQL and re-run to create isolated database.${NC}"
+                # Check multiple ways to see if PostgreSQL is available
+                if ! pg_isready >/dev/null 2>&1 && ! psql -c "SELECT 1" >/dev/null 2>&1; then
+                    echo -e "${YELLOW}Warning: PostgreSQL server is not accessible. Skipping database isolation.${NC}"
+                    echo -e "${YELLOW}Start PostgreSQL (or Postgres.app) and re-run to create isolated database.${NC}"
                     NEW_DB_NAME=""
                 else
                     NEW_DB_NAME=$(create_database "$DB_TYPE" "$DB_NAME" "$WORKTREE_NAME") || {
