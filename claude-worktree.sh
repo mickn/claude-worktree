@@ -649,7 +649,11 @@ EOF
     fi
 
     # Get Claude command from config
-    CLAUDE_CMD="$(get_config_value "claude_command" "claude") --dangerously-skip-permissions"
+    CLAUDE_BASE_CMD=$(get_config_value "claude_command" "claude")
+    if [ -z "$CLAUDE_BASE_CMD" ]; then
+        CLAUDE_BASE_CMD="claude"
+    fi
+    CLAUDE_CMD="$CLAUDE_BASE_CMD --dangerously-skip-permissions"
 
     # Create a cleanup function
     cleanup() {
@@ -821,8 +825,8 @@ EOF
     echo -e "${CYAN}───────────────────────────────────────────${NC}"
 
     # Check if Claude is available
-    if ! command -v "$CLAUDE_CMD" &> /dev/null; then
-        echo -e "${RED}Warning: '$CLAUDE_CMD' command not found${NC}"
+    if ! command -v "$CLAUDE_BASE_CMD" &> /dev/null; then
+        echo -e "${RED}Warning: '$CLAUDE_BASE_CMD' command not found${NC}"
         echo -e "${YELLOW}Please ensure Claude Code is installed${NC}"
         echo -e "${YELLOW}Visit: https://github.com/anthropics/claude-code${NC}"
         echo ""
