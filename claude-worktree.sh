@@ -125,7 +125,7 @@ create_database() {
                 # Clone data if original database exists
                 if psql -lqt | cut -d \| -f 1 | grep -qw "$original_db"; then
                     echo -e "${BLUE}Cloning data from $original_db...${NC}" >&2
-                    pg_dump "$original_db" | psql "$db_name" 2>/dev/null || {
+                    pg_dump "$original_db" | psql "$db_name" >/dev/null 2>&1 || {
                         echo -e "${YELLOW}Warning: Failed to clone data, starting with empty database${NC}" >&2
                     }
                 fi
