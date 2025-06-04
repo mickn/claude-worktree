@@ -779,34 +779,13 @@ EOF
     
     # Check if we can open a new terminal window
     if [[ "$OSTYPE" == "darwin"* ]] && command -v osascript &> /dev/null; then
-        # Check if iTerm is available
-        if osascript -e 'tell application "System Events" to exists application process "iTerm"' &> /dev/null || \
-           osascript -e 'tell application "Finder" to exists application file "iTerm" of folder "Applications" of startup disk' &> /dev/null; then
-            # iTerm is available - use it with custom title
-            echo -e "${GREEN}Opening server in new iTerm window...${NC}"
-            osascript -e "
-            tell application \"iTerm\"
-                activate
-                create window with default profile
-                tell current session of current window
-                    write text \"cd '$WORKTREE_PATH'\"
-                    write text \"echo -e '\\033]0;Claude Worktree: $WORKTREE_NAME [$BRANCH_TO_USE]\\007'\"
-                    write text \"echo 'Claude Worktree Server - $WORKTREE_NAME'\"
-                    write text \"echo 'Branch: $BRANCH_TO_USE | Port: $PORT'\"
-                    write text \"echo '========================'\"
-                    write text \"export CLAUDE_WORKTREE_PORT=$PORT\"
-                    write text \"$SERVER_CMD\"
-                end tell
-            end tell" &> /dev/null
-        else
-            # Fall back to Terminal.app
-            echo -e "${GREEN}Opening server in new Terminal window...${NC}"
-            osascript -e "
-            tell application \"Terminal\"
-                activate
-                do script \"cd '$WORKTREE_PATH' && echo -e '\\033]0;Claude Worktree: $WORKTREE_NAME [$BRANCH_TO_USE]\\007' && echo 'Claude Worktree Server - $WORKTREE_NAME' && echo 'Branch: $BRANCH_TO_USE | Port: $PORT' && echo '========================' && export CLAUDE_WORKTREE_PORT=$PORT && $SERVER_CMD\"
-            end tell" &> /dev/null
-        fi
+        # macOS - open in new Terminal window
+        echo -e "${GREEN}Opening server in new Terminal window...${NC}"
+        osascript -e "
+        tell application \"Terminal\"
+            activate
+            do script \"cd '$WORKTREE_PATH' && echo 'Claude Worktree Server - $WORKTREE_NAME' && echo '========================' && export CLAUDE_WORKTREE_PORT=$PORT && $SERVER_CMD\"
+        end tell" &> /dev/null
         
         # Give it time to start
         echo -e "${YELLOW}Waiting for server to start in new window...${NC}"
