@@ -653,7 +653,13 @@ EOF
     if [ -z "$CLAUDE_BASE_CMD" ]; then
         CLAUDE_BASE_CMD="claude"
     fi
-    CLAUDE_CMD="$CLAUDE_BASE_CMD --dangerously-skip-permissions"
+    
+    # Test if the permissions flag is supported
+    if $CLAUDE_BASE_CMD --help 2>&1 | grep -q "dangerously-skip-permissions"; then
+        CLAUDE_CMD="$CLAUDE_BASE_CMD --dangerously-skip-permissions"
+    else
+        CLAUDE_CMD="$CLAUDE_BASE_CMD"
+    fi
 
     # Create a cleanup function
     cleanup() {
@@ -784,6 +790,7 @@ EOF
            osascript -e 'tell application "Finder" to exists application file "iTerm" of folder "Applications" of startup disk' &> /dev/null; then
             # iTerm is available - use it with custom title
             echo -e "${GREEN}Opening server in new iTerm window...${NC}"
+            echo -e "${BLUE}Server will run in: iTerm.app${NC}"
             osascript -e "
             tell application \"iTerm\"
                 activate
@@ -801,6 +808,7 @@ EOF
         else
             # Fall back to Terminal.app
             echo -e "${GREEN}Opening server in new Terminal window...${NC}"
+            echo -e "${BLUE}Server will run in: Terminal.app${NC}"
             osascript -e "
             tell application \"Terminal\"
                 activate
@@ -808,10 +816,30 @@ EOF
             end tell" &> /dev/null
         fi
         
-        # Give it time to start
+        # Wait for server to actually start and be ready
         echo -e "${YELLOW}Waiting for server to start in new window...${NC}"
-        sleep 5
         SERVER_PID="terminal"
+        
+        # Wait up to 30 seconds for server to be ready
+        local wait_time=0
+        local max_wait=30
+        while [ $wait_time -lt $max_wait ]; do
+            if lsof -i:$PORT >/dev/null 2>&1; then
+                echo -e "${GREEN}✓ Server is ready on port $PORT${NC}"
+                break
+            fi
+            sleep 1
+            ((wait_time++))
+            if [ $((wait_time % 5)) -eq 0 ]; then
+                echo -e "${YELLOW}Still waiting for server... (${wait_time}s)${NC}"
+            fi
+        done
+        
+        if [ $wait_time -eq $max_wait ]; then
+            echo -e "${YELLOW}Warning: Server may not have started properly${NC}"
+            echo -e "${YELLOW}Check the terminal window for error messages${NC}"
+            echo -e "${YELLOW}You can continue anyway, but the server may not be accessible${NC}"
+        fi
     else
         # Fallback - run in background with output to log file
         echo -e "${YELLOW}Starting server in background (logs: $SERVER_LOG)${NC}"
@@ -857,9 +885,30 @@ EOF
 
     # Start Claude
     echo -e "\n${GREEN}Starting Claude...${NC}"
-    $CLAUDE_CMD || {
-        echo -e "${YELLOW}Claude session ended${NC}"
-    }
+    echo -e "${BLUE}Command: $CLAUDE_CMD${NC}"
+    echo -e "${YELLOW}Note: Use Ctrl+C to exit and trigger cleanup${NC}"
+    echo -e "${CYAN}───────────────────────────────────────────${NC}"
+    
+    # Change to worktree directory for Claude
+    cd "$WORKTREE_PATH"
+    
+    # Temporarily disable exit on error for Claude command
+    set +e
+    $CLAUDE_CMD
+    claude_exit_code=$?
+    set -e
+    
+    if [ $claude_exit_code -ne 0 ]; then
+        echo -e "${YELLOW}Claude exited with code $claude_exit_code${NC}"
+        if [ $claude_exit_code -eq 127 ]; then
+            echo -e "${RED}Error: Claude command not found. Please ensure Claude Code is installed.${NC}"
+            echo -e "${YELLOW}Visit: https://github.com/anthropics/claude-code${NC}"
+        fi
+        echo -e "${YELLOW}Press Enter to continue with cleanup...${NC}"
+        read -r
+    else
+        echo -e "${GREEN}Claude session ended normally${NC}"
+    fi
 }
 
 # Run main function
